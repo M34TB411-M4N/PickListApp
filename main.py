@@ -53,6 +53,10 @@ class Window(QMainWindow):
         self.cardListTable = QTableWidget()
         main_layout.addWidget(self.cardListTable)
 
+        clearButton = QPushButton("Remove All Checked Cards")
+        clearButton.clicked.connect(self.ClearTable)
+        main_layout.addWidget(clearButton)
+
         central_widget.setLayout(main_layout)
 
     def OpenFileWindow(self, fileType):
@@ -61,42 +65,46 @@ class Window(QMainWindow):
         if fileSelect:
             if fileType == "master":
                 self.masterCSV = fileSelect
-                self.masterCSVLabel.setText(f"{self.masterCSVLabel.text()} - found")
+                self.masterCSVLabel.setText(f"{self.masterCSVLabel.text()} - {fileSelect}")
             elif fileType == "picklist":
                 # self.picklistCSVs.append(fileSelect)
-                self.picklistCSVs = fileSelect
-                self.picklistCSVLabel.setText(f"{self.picklistCSVLabel.text()} - found")
+                self.picklistCSV = fileSelect
+                self.picklistCSVLabel.setText(f"{self.picklistCSVLabel.text()} - {fileSelect}")
             print(f"{fileType} CSV: {fileSelect}")
 
     def ProcessCSVs(self):
-        if self.masterCSV and self.picklistCSVs:
-            master_df = pd.read_csv(self.masterCSV)
-            picklist_df = pd.read_csv(self.picklistCSVs)
+        if self.masterCSV and self.picklistCSV:
+            self.master_df = pd.read_csv(self.masterCSV)
+            picklist_df = pd.read_csv(self.picklistCSV)
 
             # clean stirngs in dfs to be consistent between dfs
-            master_df["Set code"] = master_df["Set code"].str.lower()
-            master_df["Finish"] = master_df["Finish"].str.lower()
+            self.master_df["Set code"] = self.master_df["Set code"].str.lower()
+            self.master_df["Finish"] = self.master_df["Finish"].str.lower()
 
             picklist_df["Set Code"] = picklist_df["Set Code"].str.lower()
             picklist_df["Finish"] = picklist_df["Finish"].replace(["Non-Foil", "Foil"], ["normal", "foil"])
 
             # expand each row to duplicate equal to the quantity of that card
-            master_df = master_df.loc[master_df.index.repeat(master_df["Quantity"])]
+            ex_master_df = self.master_df.loc[self.master_df.index.repeat(self.master_df["Quantity"])]
             picklist_df = picklist_df.loc[picklist_df.index.repeat(picklist_df["Quantity"])]
 
             # each card gets a count of how many times that exact card is seen before
             # this allows the merge to only grab the next card needed
-            master_df["CopyNum"] = master_df.groupby(["Set code", "Collector number", "Finish"]).cumcount()
+            ex_master_df["CopyNum"] = ex_master_df.groupby(["Set code", "Collector number", "Finish"]).cumcount()
             picklist_df["CopyNum"] = picklist_df.groupby(["Set Code", "Collector #", "Finish"]).cumcount()
 
-            joined_df = pd.merge(master_df, 
+            joined_df = pd.merge(ex_master_df, 
                                  picklist_df, 
                                  how="inner", 
                                  left_on=["Set code", "Collector number", "Finish", "CopyNum"], 
                                  right_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
                                  suffixes=["_master", "_picklist"]
                                 )
-            joined_df = joined_df.sort_values(by="Location")
+
+            joined_df["letter"] = joined_df["Location"].str.extract(r"([A-Za-z]+)")
+            joined_df["number"] = joined_df["Location"].str.extract(r"(\d+)").astype(float)
+            
+            joined_df = joined_df.sort_values(["letter", "number"]).drop(columns=["letter", "number"])
 
             # find any cards that might be missing with an anti-join
             antijoin_df = pd.merge(picklist_df, 
@@ -133,6 +141,31 @@ class Window(QMainWindow):
             for cInd, val in enumerate(row):
                 item = QTableWidgetItem(str(val))
                 self.cardListTable.setItem(rInd, cInd + 1, item)
+
+    def ClearTable(self):
+        print("clearing table")
+        for i in range(self.cardListTable.rowCount()):
+            checkbox = self.cardListTable.item(i, 0)
+            if checkbox.checkState() == Qt.CheckState.Checked:
+                location = self.cardListTable.item(i, 1).text()
+                setCode = self.cardListTable.item(i, 3).text()
+                collectNum = self.cardListTable.item(i, 4).text()
+                finish = self.cardListTable.item(i, 5).text()
+
+                self.master_df.loc[((self.master_df["Location"] == location) & (self.master_df["Set code"] == setCode) & (self.master_df["Collector number"].astype(str) == collectNum) & (self.master_df["Finish"] == finish)), "Quantity"] -= 1
+
+        self.master_df = self.master_df[self.master_df["Quantity"] > 0]
+        self.master_df.to_csv(self.masterCSV, index=False)
+
+        # reset values to default
+        self.cardListTable.setRowCount(0)
+        self.masterCSV = None
+        self.picklistCSV = None
+        self.masterCSVLabel.setText("Add the master CSV")
+        self.picklistCSVLabel.setText("Add the pick list CSV")
+
+
+
         
             
 
