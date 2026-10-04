@@ -77,12 +77,26 @@ class Window(QMainWindow):
             self.master_df = pd.read_csv(self.masterCSV)
             picklist_df = pd.read_csv(self.picklistCSV)
 
-            # clean stirngs in dfs to be consistent between dfs
+            #set types for each column in the dataframe - sometimes can be misinterpreted from a lack of data
+            master_type_dict = {'Location':str, 'Name':str, 'Set code':str, 'Collector number':str, 'Finish':str, 'Quantity':int, 'Scryfall ID':str, 'Colors':str, 'CMC':int, 'Type':str, 'Price (USD)':float}
+            picklist_type_dict = {'Set Code':str, 'Collector #':str, 'Finish':str}
+
+            self.master_df = self.master_df.astype(master_type_dict)
+            picklist_df = picklist_df.astype(picklist_type_dict)
+
+            print("master types")
+            print(self.master_df.dtypes)
+            print("picklist types")
+            print(picklist_df.dtypes)
+
+            # clean strings in dfs to be consistent between dfs
             self.master_df["Set code"] = self.master_df["Set code"].str.lower()
             self.master_df["Finish"] = self.master_df["Finish"].str.lower()
+            self.master_df["Collector number"] = self.master_df["Collector number"].str.lower()
 
             picklist_df["Set Code"] = picklist_df["Set Code"].str.lower()
             picklist_df["Finish"] = picklist_df["Finish"].replace(["Non-Foil", "Foil"], ["normal", "foil"])
+            picklist_df["Collector #"] = picklist_df["Collector #"].str.lower()
 
             # expand each row to duplicate equal to the quantity of that card
             ex_master_df = self.master_df.loc[self.master_df.index.repeat(self.master_df["Quantity"])]
@@ -100,6 +114,13 @@ class Window(QMainWindow):
                                  right_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
                                  suffixes=["_master", "_picklist"]
                                 )
+
+            # joined_df = pd.concat([ex_master_df, 
+            #                      picklist_df.rename(columns={'Set Code':'Set code','Collector #':'Collector number'})], 
+            #                      join="inner", 
+            #                      keys=['Set code','Collector number', 'Finish', 'CopyNum']
+            #                      axis=1
+            #                     )
 
             joined_df["letter"] = joined_df["Location"].str.extract(r"([A-Za-z]+)")
             joined_df["number"] = joined_df["Location"].str.extract(r"(\d+)").astype(float)
