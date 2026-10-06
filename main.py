@@ -3,6 +3,7 @@ from PyQt6.QtGui import QIcon, QFont
 from PyQt6.QtCore import Qt
 import sys
 import pandas as pd
+import time
 
 #Window dimensions
 WIN_WID = 800
@@ -176,7 +177,11 @@ class Window(QMainWindow):
                 self.master_df.loc[((self.master_df["Location"] == location) & (self.master_df["Set code"] == setCode) & (self.master_df["Collector number"].astype(str) == collectNum) & (self.master_df["Finish"] == finish)), "Quantity"] -= 1
 
         self.master_df = self.master_df[self.master_df["Quantity"] > 0]
-        self.master_df.to_csv(self.masterCSV, index=False)
+
+        with open('cannys_updated_masterlist_' + time.ctime().replace(' ', '_').replace(':', '-') + '.csv', 'w') as file:
+            self.master_df.to_csv(file, index=False)
+
+
 
         # reset values to default
         self.cardListTable.setRowCount(0)
