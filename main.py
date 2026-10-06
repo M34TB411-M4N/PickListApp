@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem
-from PyQt6.QtGui import QIcon, QFont
+from PyQt6.QtGui import QIcon, QFont, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt
 import sys
 import pandas as pd
@@ -59,6 +59,9 @@ class Window(QMainWindow):
         main_layout.addWidget(clearButton)
 
         central_widget.setLayout(main_layout)
+
+        self.multi_check = QShortcut(QKeySequence(Qt.Key.Key_Space), self.cardListTable)
+        self.multi_check.activated.connect(self.toggle_selected_checkboxes)
 
     def OpenFileWindow(self, fileType):
         fileSelect, _ = QFileDialog.getOpenFileName(self, "CSV Select", "", "CSV Files (*.csv)")
@@ -156,7 +159,7 @@ class Window(QMainWindow):
 
         for rInd, row in enumerate(df.values):
             checkbox = QTableWidgetItem()
-            checkbox.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            checkbox.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             checkbox.setCheckState(Qt.CheckState.Unchecked)
             self.cardListTable.setItem(rInd, 0, checkbox)
 
@@ -190,6 +193,20 @@ class Window(QMainWindow):
         self.picklistCSV = None
         self.masterCSVLabel.setText("Add the master CSV")
         self.picklistCSVLabel.setText("Add the pick list CSV")
+
+    def toggle_selected_checkboxes(self):
+        selected_items = self.cardListTable.selectedItems()
+
+        checkbox_items = [item for item in selected_items if item.column() == 0]
+
+        if not checkbox_items: return
+
+        all_checked = all(item.checkState() == Qt.CheckState.Checked for item in checkbox_items)
+
+        new_state = Qt.CheckState.Unchecked if all_checked else Qt.CheckState.Checked
+
+        for item in checkbox_items:
+            item.setCheckState(new_state)
 
 
 
