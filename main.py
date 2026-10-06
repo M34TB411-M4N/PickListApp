@@ -162,6 +162,7 @@ class Window(QMainWindow):
 
             for cInd, val in enumerate(row):
                 item = QTableWidgetItem(str(val))
+                item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.cardListTable.setItem(rInd, cInd + 1, item)
 
     def ClearTable(self):
