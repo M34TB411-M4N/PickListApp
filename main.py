@@ -81,10 +81,29 @@ class Window(QMainWindow):
             self.master_df = pd.read_csv(self.masterCSV)
             picklist_df = pd.read_csv(self.picklistCSV)
 
-            #set types for each column in the dataframe - sometimes can be misinterpreted from a lack of data
-            master_type_dict = {'Location':str, 'Name':str, 'Set code':str, 'Collector number':str, 'Finish':str, 'Quantity':int, 'Scryfall ID':str, 'Colors':str, 'CMC':int, 'Type':str, 'Price (USD)':float}
-            picklist_type_dict = {'Set Code':str, 'Collector #':str, 'Finish':str}
+            #remove unnecessary columns
+            self.master_df = self.master_df.drop(['Colors', 'CMC', 'Type', 'Price (USD)'], axis=1)
+            picklist_df = picklist_df.drop(picklist_df.columns.difference(['Order','Card Name','Set Code','Collector #','Quantity','Condition','Language','Finish']), axis=1)
 
+            #set types for each column in the dataframe - sometimes can be misinterpreted from a lack of data
+            master_type_dict = {'Location':str, 
+                                'Name':str, 
+                                'Set code':str, 
+                                'Collector number':str, 
+                                'Finish':str, 
+                                'Quantity':int, 
+                                'Scryfall ID':str
+                                }
+            picklist_type_dict = { 'Order':str,
+                                   'Card Name':str,
+                                   'Set Code':str,
+                                   'Collector #':str,
+                                   'Quantity':int,
+                                   'Condition':str,
+                                   'Language':str,
+                                   'Finish':str
+                                    }
+                
             self.master_df = self.master_df.astype(master_type_dict)
             picklist_df = picklist_df.astype(picklist_type_dict)
 
@@ -207,6 +226,8 @@ class Window(QMainWindow):
 
         for item in checkbox_items:
             item.setCheckState(new_state)
+
+
 
 
 
