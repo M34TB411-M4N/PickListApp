@@ -107,10 +107,14 @@ class Window(QMainWindow):
             self.master_df = self.master_df.astype(master_type_dict)
             picklist_df = picklist_df.astype(picklist_type_dict)
 
-            print("master types")
-            print(self.master_df.dtypes)
-            print("picklist types")
-            print(picklist_df.dtypes)
+            # reverse order of cards. 
+            # requested by user so that their cards show up in the order they physically have them in
+            self.master_df = self.master_df[::-1]
+
+            # print("master types")
+            # print(self.master_df.dtypes)
+            # print("picklist types")
+            # print(picklist_df.dtypes)
 
             # clean strings in dfs to be consistent between dfs
             self.master_df["Set code"] = self.master_df["Set code"].str.lower()
@@ -160,7 +164,7 @@ class Window(QMainWindow):
                                    )
 
             missing = antijoin_df[antijoin_df["_merge"] == "left_only"]
-            print(missing.to_string())
+            print("**MISSING**", missing.to_string())
 
 
             headers = ["Location", "Name", "Set code", "Collector #", "Finish"]
