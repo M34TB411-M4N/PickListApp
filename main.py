@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QTableWidget, QTableWidgetItem, QDialog, QHBoxLayout
 from PyQt6.QtGui import QIcon, QFont, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt
 import sys
@@ -16,7 +16,6 @@ class Window(QMainWindow):
         #set start up params
         self.resize(WIN_WID, WIN_HEI)
         self.setWindowTitle("Canny's Little Helper")
-        self.statusBar().showMessage("[Initializing]")
 
         #self.setWindowIcon(QIcon('findimagelater'))
 
@@ -47,9 +46,19 @@ class Window(QMainWindow):
         self.processLabel = QLabel("Find the cards")
         main_layout.addWidget(self.processLabel)
 
-        processButton = QPushButton("Find Cards")
-        processButton.clicked.connect(self.ProcessCSVs)
-        main_layout.addWidget(processButton)
+        table_buttons_layout  = QHBoxLayout()
+
+        self.processButton = QPushButton("Find Cards")
+        self.processButton.clicked.connect(self.ProcessCSVs)
+        table_buttons_layout.addWidget(self.processButton, stretch=3)
+
+        self.missing_df = None
+        self.missingCardsButton = QPushButton("Missing Cards")
+        self.missingCardsButton.clicked.connect(self.MissingCardPopup)
+        self.missingCardsButton.hide()
+        table_buttons_layout.addWidget(self.missingCardsButton, stretch=1)
+
+        main_layout.addLayout(table_buttons_layout)
 
         self.cardListTable = QTableWidget()
         main_layout.addWidget(self.cardListTable)
@@ -77,101 +86,111 @@ class Window(QMainWindow):
             print(f"{fileType} CSV: {fileSelect}")
 
     def ProcessCSVs(self):
-        if self.masterCSV and self.picklistCSV:
-            self.master_df = pd.read_csv(self.masterCSV)
-            picklist_df = pd.read_csv(self.picklistCSV)
+        try:
+            if self.masterCSV and self.picklistCSV:
+                self.master_df = pd.read_csv(self.masterCSV)
+                picklist_df = pd.read_csv(self.picklistCSV)
 
-            #remove unnecessary columns
-            self.master_df = self.master_df.drop(['Colors', 'CMC', 'Type', 'Price (USD)'], axis=1)
-            picklist_df = picklist_df.drop(picklist_df.columns.difference(['Order','Card Name','Set Code','Collector #','Quantity','Condition','Language','Finish']), axis=1)
+                #remove unnecessary columns
+                self.master_df = self.master_df.drop(['Colors', 'CMC', 'Type', 'Price (USD)'], axis=1)
+                picklist_df = picklist_df.drop(picklist_df.columns.difference(['Order','Card Name','Set Code','Collector #','Quantity','Condition','Language','Finish']), axis=1)
 
-            #set types for each column in the dataframe - sometimes can be misinterpreted from a lack of data
-            master_type_dict = {'Location':str, 
-                                'Name':str, 
-                                'Set code':str, 
-                                'Collector number':str, 
-                                'Finish':str, 
-                                'Quantity':int, 
-                                'Scryfall ID':str
-                                }
-            picklist_type_dict = { 'Order':str,
-                                   'Card Name':str,
-                                   'Set Code':str,
-                                   'Collector #':str,
-                                   'Quantity':int,
-                                   'Condition':str,
-                                   'Language':str,
-                                   'Finish':str
+                #set types for each column in the dataframe - sometimes can be misinterpreted from a lack of data
+                master_type_dict = {'Location':str, 
+                                    'Name':str, 
+                                    'Set code':str, 
+                                    'Collector number':str, 
+                                    'Finish':str, 
+                                    'Quantity':int, 
+                                    'Scryfall ID':str
                                     }
+                picklist_type_dict = { 'Order':str,
+                                    'Card Name':str,
+                                    'Set Code':str,
+                                    'Collector #':str,
+                                    'Quantity':int,
+                                    'Condition':str,
+                                    'Language':str,
+                                    'Finish':str
+                                        }
+                    
+                self.master_df = self.master_df.astype(master_type_dict)
+                picklist_df = picklist_df.astype(picklist_type_dict)
+
+                # reverse order of cards. 
+                # requested by user so that their cards show up in the order they physically have them in
+                self.master_df = self.master_df[::-1]
+
+                # print("master types")
+                # print(self.master_df.dtypes)
+                # print("picklist types")
+                # print(picklist_df.dtypes)
+
+                # clean strings in dfs to be consistent between dfs
+                self.master_df["Set code"] = self.master_df["Set code"].str.lower()
+                self.master_df["Finish"] = self.master_df["Finish"].str.lower()
+                self.master_df["Collector number"] = self.master_df["Collector number"].str.lower()
+
+                picklist_df["Set Code"] = picklist_df["Set Code"].str.lower()
+                picklist_df["Finish"] = picklist_df["Finish"].replace(["Non-Foil", "Foil"], ["normal", "foil"])
+                picklist_df["Collector #"] = picklist_df["Collector #"].str.lower()
+
+                # expand each row to duplicate equal to the quantity of that card
+                ex_master_df = self.master_df.loc[self.master_df.index.repeat(self.master_df["Quantity"])]
+                picklist_df = picklist_df.loc[picklist_df.index.repeat(picklist_df["Quantity"])]
+
+                # each card gets a count of how many times that exact card is seen before
+                # this allows the merge to only grab the next card needed
+                ex_master_df["CopyNum"] = ex_master_df.groupby(["Set code", "Collector number", "Finish"]).cumcount()
+                picklist_df["CopyNum"] = picklist_df.groupby(["Set Code", "Collector #", "Finish"]).cumcount()
+
+                joined_df = pd.merge(ex_master_df, 
+                                    picklist_df, 
+                                    how="inner", 
+                                    left_on=["Set code", "Collector number", "Finish", "CopyNum"], 
+                                    right_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
+                                    suffixes=["_master", "_picklist"]
+                                    )
+
+                # joined_df = pd.concat([ex_master_df, 
+                #                      picklist_df.rename(columns={'Set Code':'Set code','Collector #':'Collector number'})], 
+                #                      join="inner", 
+                #                      keys=['Set code','Collector number', 'Finish', 'CopyNum']
+                #                      axis=1
+                #                     )
+
+                joined_df["letter"] = joined_df["Location"].str.extract(r"([A-Za-z]+)")
+                joined_df["number"] = joined_df["Location"].str.extract(r"(\d+)").astype(float)
                 
-            self.master_df = self.master_df.astype(master_type_dict)
-            picklist_df = picklist_df.astype(picklist_type_dict)
+                joined_df = joined_df.sort_values(["letter", "number"]).drop(columns=["letter", "number"])
 
-            # reverse order of cards. 
-            # requested by user so that their cards show up in the order they physically have them in
-            self.master_df = self.master_df[::-1]
+                # find any cards that might be missing with an anti-join
+                antijoin_df = pd.merge(picklist_df, 
+                                    joined_df, 
+                                    how="left",
+                                    left_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
+                                    right_on=["Set code", "Collector number", "Finish", "CopyNum"], 
+                                    indicator=True
+                                    )
 
-            # print("master types")
-            # print(self.master_df.dtypes)
-            # print("picklist types")
-            # print(picklist_df.dtypes)
+                self.missing_df = antijoin_df[antijoin_df["_merge"] == "left_only"]
 
-            # clean strings in dfs to be consistent between dfs
-            self.master_df["Set code"] = self.master_df["Set code"].str.lower()
-            self.master_df["Finish"] = self.master_df["Finish"].str.lower()
-            self.master_df["Collector number"] = self.master_df["Collector number"].str.lower()
+                headers = ["Location", "Name", "Set code", "Collector #", "Finish"]
+                self.PopulateTable(joined_df[headers])
 
-            picklist_df["Set Code"] = picklist_df["Set Code"].str.lower()
-            picklist_df["Finish"] = picklist_df["Finish"].replace(["Non-Foil", "Foil"], ["normal", "foil"])
-            picklist_df["Collector #"] = picklist_df["Collector #"].str.lower()
-
-            # expand each row to duplicate equal to the quantity of that card
-            ex_master_df = self.master_df.loc[self.master_df.index.repeat(self.master_df["Quantity"])]
-            picklist_df = picklist_df.loc[picklist_df.index.repeat(picklist_df["Quantity"])]
-
-            # each card gets a count of how many times that exact card is seen before
-            # this allows the merge to only grab the next card needed
-            ex_master_df["CopyNum"] = ex_master_df.groupby(["Set code", "Collector number", "Finish"]).cumcount()
-            picklist_df["CopyNum"] = picklist_df.groupby(["Set Code", "Collector #", "Finish"]).cumcount()
-
-            joined_df = pd.merge(ex_master_df, 
-                                 picklist_df, 
-                                 how="inner", 
-                                 left_on=["Set code", "Collector number", "Finish", "CopyNum"], 
-                                 right_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
-                                 suffixes=["_master", "_picklist"]
-                                )
-
-            # joined_df = pd.concat([ex_master_df, 
-            #                      picklist_df.rename(columns={'Set Code':'Set code','Collector #':'Collector number'})], 
-            #                      join="inner", 
-            #                      keys=['Set code','Collector number', 'Finish', 'CopyNum']
-            #                      axis=1
-            #                     )
-
-            joined_df["letter"] = joined_df["Location"].str.extract(r"([A-Za-z]+)")
-            joined_df["number"] = joined_df["Location"].str.extract(r"(\d+)").astype(float)
-            
-            joined_df = joined_df.sort_values(["letter", "number"]).drop(columns=["letter", "number"])
-
-            # find any cards that might be missing with an anti-join
-            antijoin_df = pd.merge(picklist_df, 
-                                   joined_df, 
-                                   how="left",
-                                   left_on=["Set Code", "Collector #", "Finish", "CopyNum"], 
-                                   right_on=["Set code", "Collector number", "Finish", "CopyNum"], 
-                                   indicator=True
-                                   )
-
-            missing = antijoin_df[antijoin_df["_merge"] == "left_only"]
-            print("**MISSING**", missing.to_string())
-
-
-            headers = ["Location", "Name", "Set code", "Collector #", "Finish"]
-            self.PopulateTable(joined_df[headers])
-
-            with open("joined.txt", "w") as f:
-                f.write(joined_df.to_string())
+                if not self.missing_df.empty:
+                    print("**MISSING**\n", self.missing_df.to_string())
+                    self.missingCardsButton.setText(f"Missing Cards ({len(self.missing_df)})")
+                    self.missingCardsButton.show()
+                else:
+                    self.missingCardsButton.hide()
+                
+                with open("joined.txt", "w") as f:
+                    f.write(joined_df.to_string())
+        except AttributeError as e:
+            print("ERROR:\n", e)
+            self.statusBar().setStyleSheet("color: red;")
+            self.statusBar().showMessage("Missing master and/or pick list")
 
     def PopulateTable(self, df):
 
@@ -214,6 +233,8 @@ class Window(QMainWindow):
         self.cardListTable.setRowCount(0)
         self.masterCSV = None
         self.picklistCSV = None
+        self.missing_df = None
+        self.missingCardsButton.hide()
         self.masterCSVLabel.setText("Add the master CSV")
         self.picklistCSVLabel.setText("Add the pick list CSV")
 
@@ -230,6 +251,34 @@ class Window(QMainWindow):
 
         for item in checkbox_items:
             item.setCheckState(new_state)
+
+    def MissingCardPopup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Missing Cards")
+        dialog.resize(500, 300)
+        layout = QVBoxLayout(dialog)
+
+        layout.addWidget(QLabel(f"Warning: {len(self.missing_df)} required card(s) were not found in the master list:"))
+
+        missing_table_headers = ["Name", "Set Code", "Collector #", "Finish"]
+        table = QTableWidget()
+        table.setRowCount(len(self.missing_df))
+        table.setColumnCount(len(missing_table_headers))
+        table.setHorizontalHeaderLabels(missing_table_headers)
+
+        for row_idx, row in enumerate(self.missing_df.itertuples()):
+            table.setItem(row_idx, 0, QTableWidgetItem(str(row[2])))
+            table.setItem(row_idx, 1, QTableWidgetItem(str(row[3])))
+            table.setItem(row_idx, 2, QTableWidgetItem(str(row[4])))
+            table.setItem(row_idx, 3, QTableWidgetItem(str(row[6])))
+
+        layout.addWidget(table)
+
+        close_button = QPushButton("OK")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        dialog.exec()
 
 
 
